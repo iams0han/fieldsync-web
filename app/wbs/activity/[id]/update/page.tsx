@@ -142,46 +142,61 @@ export default function UpdateProgressPage() {
   // Submit Progress
   // --------------------------------
   async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  event: React.FormEvent<HTMLFormElement>
+) {
+  event.preventDefault();
 
-    if (!activity) return;
+  if (!activity) return;
 
-    try {
-      setSubmitting(true);
-      setError("");
+  try {
+    setSubmitting(true);
+    setError("");
 
-      // 1. Save progress
-      await approveProgress(
-        activity.activity_id,
-        progress
-      );
-
-      // 2. Upload field evidence if photo is selected
-      if (photo) {
-        await uploadEvidence({
-          activityId: activity.activity_id,
-          type: photo.type,
-          latitude: location?.lat,
-          longitude: location?.lng,
-          file: photo,
-        });
-      }
-
-      // 3. Show success
-      setSubmitted(true);
-
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        "Progress was not saved completely. Please check the backend and try again."
-      );
-    } finally {
-      setSubmitting(false);
+    // 1. Upload field evidence first
+    if (!photo) {
+      setError("Please upload a site photo before saving progress.");
+      return;
     }
+
+    const evidenceResponse = await uploadEvidence({
+      activityId: activity.activity_id,
+      type: photo.type,
+      latitude: location?.lat,
+      longitude: location?.lng,
+      file: photo,
+    });
+
+    // 2. Get the newly created evidence ID
+    const evidenceId = Number(
+      evidenceResponse?.db?.id
+    );
+
+    if (!evidenceId) {
+      throw new Error("Evidence ID was not returned by backend.");
+    }
+
+    // 3. Approve progress using the new evidence
+    await approveProgress(
+      activity.activity_id,
+      evidenceId,
+      progress
+    );
+
+    // 4. Show success
+    setSubmitted(true);
+
+  } catch (err) {
+    console.error(err);
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Progress was not saved completely. Please check the backend and try again."
+    );
+  } finally {
+    setSubmitting(false);
   }
+}
 
   // --------------------------------
   // Loading
