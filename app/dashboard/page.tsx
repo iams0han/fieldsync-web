@@ -55,6 +55,7 @@ type DashboardData = {
     code?: string;
     name?: string;
     title?: string;
+    status?: string;
   };
 
   project_name?: string;
@@ -68,8 +69,17 @@ type DashboardData = {
   completed_activities?: number;
   pending_activities?: number;
 
-  alerts?: any[];
+  /* Evidence statistics from backend */
+  evidence_count?: number;
+  approved_evidence?: number;
+  rejected_evidence?: number;
+  pending_evidence?: number;
 
+  /* Delay statistics from backend */
+  total_delayed?: number;
+  total_at_risk?: number;
+
+  alerts?: any[];
   activities?: any[];
   recent_evidence?: any[];
   evidence?: any[];
@@ -102,16 +112,10 @@ function formatTime(dateString?: string | null) {
   return `${days}d ago`;
 }
 
-function getProgress(
-  planned: number,
-  actual: number
-) {
+function getProgress(planned: number, actual: number) {
   if (!planned || planned <= 0) return 0;
 
-  return Math.min(
-    100,
-    Math.max(0, (actual / planned) * 100)
-  );
+  return Math.min(100, Math.max(0, (actual / planned) * 100));
 }
 
 function getAlertTitle(alert: any) {
@@ -129,7 +133,7 @@ function getAlertId(alert: any) {
     alert?.activity_code ||
     alert?.code ||
     alert?.id ||
-    `ACT-${Math.random().toString(36).slice(2, 6)}`
+    "ACT-01"
   );
 }
 
@@ -189,22 +193,48 @@ export default function DashboardPage() {
     try {
       setError("");
 
-      const [dashboardData, evidenceData] =
-        await Promise.all([
-          getDashboard(PROJECT_ID),
-          getEvidence(PROJECT_ID),
-        ]);
+      /*
+       * Dashboard is the primary source for KPI/statistics.
+       * Evidence endpoint is used only for recent field updates.
+       */
+      const dashboardData = await getDashboard(PROJECT_ID);
 
       setDashboard(dashboardData);
 
-      setEvidence(
-        Array.isArray(evidenceData?.evidence)
-          ? evidenceData.evidence
-          : []
-      );
+      /*
+       * Evidence list is secondary.
+       * If it fails, dashboard statistics will still work.
+       */
+      try {
+        const evidenceData = await getEvidence(PROJECT_ID);
+
+        setEvidence(
+          Array.isArray(evidenceData?.evidence)
+            ? evidenceData.evidence
+            : []
+        );
+      } catch (evidenceError) {
+        console.error(
+          "Evidence list load error:",
+          evidenceError
+        );
+
+        /*
+         * Use recent_evidence returned by dashboard
+         * as fallback for Recent Field Updates.
+         */
+        setEvidence(
+          Array.isArray(dashboardData?.recent_evidence)
+            ? dashboardData.recent_evidence
+            : []
+        );
+      }
     } catch (err) {
       console.error("Dashboard load error:", err);
-      setError("Failed to load dashboard data");
+
+      setError(
+        "Failed to load dashboard data"
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -231,13 +261,37 @@ export default function DashboardPage() {
     dashboard?.total_actual_qty ?? 0
   );
 
+  /* =======================================================
+     ALERTS
+  ======================================================= */
+
   const backendAlerts = Array.isArray(
     dashboard?.alerts
   )
-    ? dashboard!.alerts!
+    ? dashboard.alerts
     : [];
 
-  const delayedCount = backendAlerts.length;
+  /*
+   * Prefer backend total_delayed if available.
+   * alerts may contain at-risk items as well.
+   */
+  const delayedCount = Number(
+    dashboard?.total_delayed ??
+      backendAlerts.filter(
+        (alert: any) =>
+          String(alert?.status || "").toLowerCase() ===
+          "delayed"
+      ).length
+  );
+
+  const atRiskCount = Number(
+    dashboard?.total_at_risk ??
+      backendAlerts.filter(
+        (alert: any) =>
+          String(alert?.status || "").toLowerCase() ===
+          "at risk"
+      ).length
+  );
 
   /* =======================================================
      ACTIVITY COUNTS
@@ -250,8 +304,7 @@ export default function DashboardPage() {
   );
 
   const completedActivities = Number(
-    dashboard?.completed_activities ??
-      0
+    dashboard?.completed_activities ?? 0
   );
 
   const pendingActivities = Number(
@@ -270,39 +323,66 @@ export default function DashboardPage() {
     dashboard?.project?.name ||
     dashboard?.project?.title ||
     dashboard?.project_name ||
-    "Metro Line 3 Build";
+    "Metro Line 3";
 
   const projectCode =
     dashboard?.project?.code ||
     dashboard?.project_code ||
     `P-${String(PROJECT_ID).padStart(3, "0")}`;
 
+  const projectStatus =
+    dashboard?.project?.status || "Active";
+
   /* =======================================================
      EVIDENCE COUNTS
+     IMPORTANT:
+     Use backend values directly.
   ======================================================= */
 
-  const approvedEvidence = evidence.filter(
-    (item) =>
-      item.review_status === "Approved"
-  ).length;
+  const evidenceTotal = Number(
+    dashboard?.evidence_count ?? evidence.length
+  );
 
-  const rejectedEvidence = evidence.filter(
-    (item) =>
-      item.review_status === "Rejected"
-  ).length;
+  const approvedEvidence = Number(
+    dashboard?.approved_evidence ??
+      evidence.filter(
+        (item) =>
+          item.review_status === "Approved"
+      ).length
+  );
 
-  const pendingEvidence = evidence.filter(
-    (item) =>
-      !item.review_status ||
-      item.review_status === "Pending Review"
-  ).length;
+  const rejectedEvidence = Number(
+    dashboard?.rejected_evidence ??
+      evidence.filter(
+        (item) =>
+          item.review_status === "Rejected"
+      ).length
+  );
+
+  const pendingEvidence = Number(
+    dashboard?.pending_evidence ??
+      evidence.filter(
+        (item) =>
+          !item.review_status ||
+          item.review_status === "Pending Review"
+      ).length
+  );
 
   /* =======================================================
      REAL RECENT FIELD UPDATES
   ======================================================= */
 
   const recentEvidence = useMemo(() => {
-    return [...evidence]
+    const source =
+      evidence.length > 0
+        ? evidence
+        : Array.isArray(
+            dashboard?.recent_evidence
+          )
+        ? dashboard.recent_evidence
+        : [];
+
+    return [...source]
       .sort((a, b) => {
         const aTime = a.created_at
           ? new Date(a.created_at).getTime()
@@ -315,7 +395,10 @@ export default function DashboardPage() {
         return bTime - aTime;
       })
       .slice(0, 4);
-  }, [evidence]);
+  }, [
+    evidence,
+    dashboard?.recent_evidence,
+  ]);
 
   /* =======================================================
      CURRENT PLAN VS ACTUAL
@@ -325,24 +408,6 @@ export default function DashboardPage() {
     plannedTotal,
     actualTotal
   );
-
-  const variance =
-    actualPercent - progress;
-
-  /*
-    Progress KPI should represent backend overall progress.
-    Quantity completion is separately calculated from
-    total planned vs total actual.
-  */
-
-  const quantityVariance =
-    actualPercent - 100;
-
-  /* =======================================================
-     EVIDENCE STATUS
-  ======================================================= */
-
-  const evidenceTotal = evidence.length;
 
   /* =======================================================
      REFRESH
@@ -464,7 +529,7 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center gap-2">
 
                 <span className="rounded-md bg-[#c47a44] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-white">
-                  Active Project
+                  {projectStatus}
                 </span>
 
                 <span className="text-[9px] font-medium text-[#a9b7b3]">
@@ -505,14 +570,18 @@ export default function DashboardPage() {
 
               <div className="min-w-0">
 
-                <span className="inline-block rounded-full bg-[#7b4c35] px-2.5 py-1.5 text-[8px] font-bold text-[#ffe5d1] sm:px-3 sm:text-[9px]">
-
+                <span
+                  className={`inline-block rounded-full px-2.5 py-1.5 text-[8px] font-bold sm:px-3 sm:text-[9px] ${
+                    progress < 50
+                      ? "bg-[#7b4c35] text-[#ffe5d1]"
+                      : "bg-[#315b4f] text-[#dff5eb]"
+                  }`}
+                >
                   {progress < 50
                     ? "AT RISK"
                     : delayedCount > 0
                     ? "ATTENTION"
                     : "ON TRACK"}
-
                 </span>
 
                 <p className="mt-2 text-[8px] text-[#8fa19d] sm:text-[9px]">
@@ -583,10 +652,13 @@ export default function DashboardPage() {
             note={
               delayedCount > 0
                 ? `${delayedCount} delayed`
+                : atRiskCount > 0
+                ? `${atRiskCount} at risk`
                 : "No active delays"
             }
             noteClass={
-              delayedCount > 0
+              delayedCount > 0 ||
+              atRiskCount > 0
                 ? "text-[#a34c4c]"
                 : "text-[#4c7565]"
             }
@@ -627,24 +699,54 @@ export default function DashboardPage() {
           />
 
           <KpiCard
-            label="Delayed Activities"
+            label="Evidence Records"
             icon={
-              <AlertTriangle
+              <Camera
                 size={15}
-                className="text-[#a34c4c]"
+                className="text-[#68364b]"
               />
             }
-            value={delayedCount.toString()}
-            valueClass="text-[#a34c4c]"
-            note={
-              delayedCount === 0
-                ? "No delays"
-                : "Need attention"
+            value={evidenceTotal.toString()}
+            note={`${approvedEvidence} approved`}
+            noteClass="text-[#4c7565]"
+          />
+
+        </section>
+
+        {/* =================================================
+            EVIDENCE STATUS ROW
+        ================================================= */}
+
+        <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+          <MiniKpi
+            label="Total Evidence"
+            value={evidenceTotal}
+          />
+
+          <MiniKpi
+            label="Approved"
+            value={approvedEvidence}
+            valueClass="text-[#4c7565]"
+          />
+
+          <MiniKpi
+            label="Pending Review"
+            value={pendingEvidence}
+            valueClass={
+              pendingEvidence > 0
+                ? "text-[#a85f2e]"
+                : "text-[#4c7565]"
             }
-            noteClass={
-              delayedCount === 0
-                ? "text-[#4c7565]"
-                : "text-[#a34c4c]"
+          />
+
+          <MiniKpi
+            label="Rejected"
+            value={rejectedEvidence}
+            valueClass={
+              rejectedEvidence > 0
+                ? "text-[#a34c4c]"
+                : "text-[#4c7565]"
             }
           />
 
@@ -786,10 +888,12 @@ export default function DashboardPage() {
                       progress < 50
                         ? "#a34c4c"
                         : "#68364b",
+
                     borderRightColor:
                       progress < 50
                         ? "#a34c4c"
                         : "#68364b",
+
                     borderBottomColor:
                       "#c47a44",
                   }}
@@ -804,14 +908,16 @@ export default function DashboardPage() {
                   <p
                     className={`mt-1 text-[9px] font-bold uppercase tracking-wider ${
                       progress < 50 ||
-                      delayedCount > 0
+                      delayedCount > 0 ||
+                      atRiskCount > 0
                         ? "text-[#a85f2e]"
                         : "text-[#4c7565]"
                     }`}
                   >
                     {progress < 50
                       ? "At Risk"
-                      : delayedCount > 0
+                      : delayedCount > 0 ||
+                        atRiskCount > 0
                       ? "Attention"
                       : "On Track"}
                   </p>
@@ -829,13 +935,15 @@ export default function DashboardPage() {
                 value={
                   progress < 50
                     ? "At Risk"
-                    : delayedCount > 0
+                    : delayedCount > 0 ||
+                      atRiskCount > 0
                     ? "Attention"
                     : "On Track"
                 }
                 danger={
                   progress < 50 ||
-                  delayedCount > 0
+                  delayedCount > 0 ||
+                  atRiskCount > 0
                 }
               />
 
@@ -972,8 +1080,10 @@ export default function DashboardPage() {
                           <MapPin size={9} />
 
                           <span className="truncate">
+
                             {item.wbs_code ||
                               "Field Evidence"}
+
                           </span>
 
                           <span>·</span>
@@ -1022,10 +1132,12 @@ export default function DashboardPage() {
                             : "bg-[#fff1e5] text-[#a85f2e]"
                         }`}
                       >
+
                         {status ===
                         "Pending Review"
                           ? "PENDING"
                           : status.toUpperCase()}
+
                       </span>
 
                     </div>
@@ -1061,7 +1173,7 @@ export default function DashboardPage() {
 
               <span className="shrink-0 rounded-full bg-[#f9eaea] px-2 py-1 text-[7px] font-bold text-[#a34c4c] sm:px-2.5 sm:text-[8px]">
 
-                {delayedCount} ACTIVE
+                {backendAlerts.length} ACTIVE
 
               </span>
 
@@ -1241,6 +1353,36 @@ function KpiCard({
         </span>
 
       </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   MINI KPI
+========================================================= */
+
+function MiniKpi({
+  label,
+  value,
+  valueClass = "",
+}: {
+  label: string;
+  value: number;
+  valueClass?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-[#e3ddda] bg-white p-3.5 sm:p-4">
+
+      <p className="truncate text-[8px] font-semibold uppercase tracking-wide text-[#929b98]">
+        {label}
+      </p>
+
+      <p
+        className={`mt-1.5 text-xl font-bold sm:text-2xl ${valueClass}`}
+      >
+        {value}
+      </p>
 
     </div>
   );
