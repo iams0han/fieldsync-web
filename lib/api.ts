@@ -1,5 +1,6 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://fieldsync-backend-nyeq.onrender.com/api";
 
 export async function getDashboard(projectId: number) {
   const res = await fetch(`${API_BASE_URL}/dashboard/${projectId}`);

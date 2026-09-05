@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-
 import {
   Camera,
   CheckCircle2,
@@ -19,7 +18,6 @@ import {
 } from "lucide-react";
 
 import AppShell from "@/components/AppShell";
-
 import {
   getDashboard,
   getEvidence,
@@ -29,9 +27,10 @@ import {
 const PROJECT_ID = 1;
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://fieldsync-backend-nyeq.onrender.com/api";
 
-const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api$/, "");
+const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
 type EvidenceStatus =
   | "Approved"
@@ -51,10 +50,8 @@ type EvidenceItem = {
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   created_at?: string | null;
-
   latitude?: number | null;
   longitude?: number | null;
-
   lat?: number | null;
   lng?: number | null;
 };
@@ -71,32 +68,103 @@ type Activity = {
   unit?: string;
 };
 
-function getStatus(status?: string | null): EvidenceStatus {
-  if (status === "Approved") return "Approved";
-  if (status === "Rejected") return "Rejected";
+type DashboardData = {
+  project_id?: number;
+
+  project?: {
+    id?: number;
+    code?: string | null;
+    name?: string | null;
+    status?: string | null;
+  };
+
+  overall_progress_pct?: number | null;
+
+  evidence_count?: number | null;
+  approved_evidence?: number | null;
+  pending_evidence?: number | null;
+  rejected_evidence?: number | null;
+
+  activities?: Activity[];
+  recent_evidence?: EvidenceItem[];
+};
+
+// =========================================================
+// STATUS
+// =========================================================
+
+function getStatus(
+  status?: string | null
+): EvidenceStatus {
+  if (status === "Approved") {
+    return "Approved";
+  }
+
+  if (status === "Rejected") {
+    return "Rejected";
+  }
 
   return "Pending Review";
 }
 
+// =========================================================
+// IMAGE URL
+// =========================================================
+
 function getImageUrl(uri?: string | null) {
-  if (!uri) return "";
+  if (!uri) {
+    return "";
+  }
 
+  let cleanUri = String(uri).trim();
+
+  if (!cleanUri) {
+    return "";
+  }
+
+  // Already complete URL
   if (
-    uri.startsWith("http://") ||
-    uri.startsWith("https://")
+    cleanUri.startsWith("http://") ||
+    cleanUri.startsWith("https://")
   ) {
-    return uri;
+    return cleanUri;
   }
 
-  if (uri.startsWith("/")) {
-    return `${BACKEND_ORIGIN}${uri}`;
+  /*
+    Old database records may contain values like:
+
+    /uploads/C:\Users\dasso\...\uploads\123.jpg
+
+    We only need the actual filename.
+  */
+
+  if (cleanUri.includes("\\") || cleanUri.includes(":")) {
+    const normalized = cleanUri.replace(/\\/g, "/");
+
+    const fileName =
+      normalized.split("/").pop() || "";
+
+    if (fileName) {
+      return `${BACKEND_ORIGIN}/uploads/${fileName}`;
+    }
   }
 
-  return `${BACKEND_ORIGIN}/${uri}`;
+  // Normal backend URI
+  if (cleanUri.startsWith("/")) {
+    return `${BACKEND_ORIGIN}${cleanUri}`;
+  }
+
+  return `${BACKEND_ORIGIN}/${cleanUri}`;
 }
 
+// =========================================================
+// DATE
+// =========================================================
+
 function formatDate(value?: string | null) {
-  if (!value) return "—";
+  if (!value) {
+    return "—";
+  }
 
   const date = new Date(value);
 
@@ -113,9 +181,16 @@ function formatDate(value?: string | null) {
   });
 }
 
+// =========================================================
+// COORDINATES
+// =========================================================
+
 function getCoordinates(item: EvidenceItem) {
-  const latitude = item.latitude ?? item.lat;
-  const longitude = item.longitude ?? item.lng;
+  const latitude =
+    item.latitude ?? item.lat;
+
+  const longitude =
+    item.longitude ?? item.lng;
 
   if (
     latitude === null ||
@@ -129,7 +204,10 @@ function getCoordinates(item: EvidenceItem) {
   const lat = Number(latitude);
   const lng = Number(longitude);
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
     return null;
   }
 
@@ -139,8 +217,13 @@ function getCoordinates(item: EvidenceItem) {
   };
 }
 
+// =========================================================
+// LOCATION
+// =========================================================
+
 function getLocation(item: EvidenceItem) {
-  const coordinates = getCoordinates(item);
+  const coordinates =
+    getCoordinates(item);
 
   if (!coordinates) {
     return "GPS not stored";
@@ -151,8 +234,13 @@ function getLocation(item: EvidenceItem) {
   )}, ${coordinates.longitude.toFixed(5)}`;
 }
 
+// =========================================================
+// GOOGLE MAPS URL
+// =========================================================
+
 function getMapsUrl(item: EvidenceItem) {
-  const coordinates = getCoordinates(item);
+  const coordinates =
+    getCoordinates(item);
 
   if (!coordinates) {
     return null;
@@ -161,7 +249,13 @@ function getMapsUrl(item: EvidenceItem) {
   return `https://www.google.com/maps?q=${coordinates.latitude},${coordinates.longitude}`;
 }
 
-function getStatusClasses(status: EvidenceStatus) {
+// =========================================================
+// STATUS COLORS
+// =========================================================
+
+function getStatusClasses(
+  status: EvidenceStatus
+) {
   if (status === "Approved") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
@@ -173,7 +267,13 @@ function getStatusClasses(status: EvidenceStatus) {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
-function getStatusIcon(status: EvidenceStatus) {
+// =========================================================
+// STATUS ICON
+// =========================================================
+
+function getStatusIcon(
+  status: EvidenceStatus
+) {
   if (status === "Approved") {
     return <CheckCircle2 size={15} />;
   }
@@ -185,6 +285,10 @@ function getStatusIcon(status: EvidenceStatus) {
   return <Clock3 size={15} />;
 }
 
+// =========================================================
+// PAGE
+// =========================================================
+
 export default function FieldEvidencePage() {
   const fileInputRef =
     useRef<HTMLInputElement | null>(null);
@@ -195,15 +299,16 @@ export default function FieldEvidencePage() {
   const [activities, setActivities] =
     useState<Activity[]>([]);
 
-  const [projectName, setProjectName] = useState(
-    "Infrastructure Project"
-  );
+  const [projectName, setProjectName] =
+    useState("Infrastructure Project");
 
   const [overallProgress, setOverallProgress] =
     useState(0);
 
-  const [selectedActivityId, setSelectedActivityId] =
-    useState<number | "">("");
+  const [
+    selectedActivityId,
+    setSelectedActivityId,
+  ] = useState<number | "">("");
 
   const [selectedFile, setSelectedFile] =
     useState<File | null>(null);
@@ -217,8 +322,10 @@ export default function FieldEvidencePage() {
   const [statusFilter, setStatusFilter] =
     useState<"All" | EvidenceStatus>("All");
 
-  const [selectedEvidence, setSelectedEvidence] =
-    useState<EvidenceItem | null>(null);
+  const [
+    selectedEvidence,
+    setSelectedEvidence,
+  ] = useState<EvidenceItem | null>(null);
 
   const [isLoading, setIsLoading] =
     useState(true);
@@ -229,18 +336,28 @@ export default function FieldEvidencePage() {
   const [isRefreshing, setIsRefreshing] =
     useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const [uploadMessage, setUploadMessage] =
     useState("");
 
-  const [location, setLocation] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [location, setLocation] =
+    useState<{
+      lat: number;
+      lng: number;
+    } | null>(null);
+
+  const [evidenceStats, setEvidenceStats] =
+    useState({
+      total: 0,
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+    });
 
   // =========================================================
-  // LOAD REAL BACKEND DATA
+  // LOAD BACKEND DATA
   // =========================================================
 
   async function loadData(
@@ -255,20 +372,29 @@ export default function FieldEvidencePage() {
         setIsLoading(true);
       }
 
-      const [dashboard, evidence] =
-        await Promise.all([
-          getDashboard(PROJECT_ID),
-          getEvidence(PROJECT_ID),
-        ]);
+      // -------------------------------------------------------
+      // DASHBOARD
+      // -------------------------------------------------------
 
-      // Project information
+      const dashboard =
+        (await getDashboard(
+          PROJECT_ID
+        )) as DashboardData;
+
+      // -------------------------------------------------------
+      // PROJECT
+      // -------------------------------------------------------
+
       if (dashboard?.project?.name) {
         setProjectName(
           dashboard.project.name
         );
       }
 
-      // Real project progress
+      // -------------------------------------------------------
+      // PROJECT PROGRESS
+      // -------------------------------------------------------
+
       if (
         dashboard?.overall_progress_pct !==
           undefined &&
@@ -281,7 +407,10 @@ export default function FieldEvidencePage() {
         );
       }
 
-      // Activities
+      // -------------------------------------------------------
+      // ACTIVITIES
+      // -------------------------------------------------------
+
       if (
         Array.isArray(
           dashboard?.activities
@@ -302,14 +431,107 @@ export default function FieldEvidencePage() {
         }
       }
 
-      // Evidence
-      if (Array.isArray(evidence)) {
-        setEvidenceData(evidence);
-      } else {
-        setEvidenceData([]);
+      // -------------------------------------------------------
+      // EVIDENCE STATS
+      // -------------------------------------------------------
+
+      setEvidenceStats({
+        total: Number(
+          dashboard?.evidence_count ?? 0
+        ),
+
+        approved: Number(
+          dashboard?.approved_evidence ?? 0
+        ),
+
+        pending: Number(
+          dashboard?.pending_evidence ?? 0
+        ),
+
+        rejected: Number(
+          dashboard?.rejected_evidence ?? 0
+        ),
+      });
+
+      // -------------------------------------------------------
+      // EVIDENCE
+      // -------------------------------------------------------
+
+      let finalEvidence: EvidenceItem[] =
+        [];
+
+      try {
+        const evidence =
+          await getEvidence(
+            PROJECT_ID
+          );
+
+        if (Array.isArray(evidence)) {
+          finalEvidence = evidence;
+        } else if (
+          Array.isArray(
+            evidence?.evidence
+          )
+        ) {
+          finalEvidence =
+            evidence.evidence;
+        } else if (
+          Array.isArray(
+            evidence?.data
+          )
+        ) {
+          finalEvidence =
+            evidence.data;
+        }
+      } catch (evidenceError) {
+        console.error(
+          "Evidence API failed:",
+          evidenceError
+        );
       }
+
+      // -------------------------------------------------------
+      // FALLBACK
+      // -------------------------------------------------------
+
+      if (
+        finalEvidence.length === 0 &&
+        Array.isArray(
+          dashboard?.recent_evidence
+        )
+      ) {
+        finalEvidence =
+          dashboard.recent_evidence;
+      }
+
+      // -------------------------------------------------------
+      // SORT NEWEST FIRST
+      // -------------------------------------------------------
+
+      finalEvidence.sort((a, b) => {
+        const dateA = a.created_at
+          ? new Date(
+              a.created_at
+            ).getTime()
+          : 0;
+
+        const dateB = b.created_at
+          ? new Date(
+              b.created_at
+            ).getTime()
+          : 0;
+
+        return dateB - dateA;
+      });
+
+      setEvidenceData(
+        finalEvidence
+      );
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Field evidence load error:",
+        err
+      );
 
       setError(
         "Failed to load field evidence data from backend."
@@ -328,10 +550,16 @@ export default function FieldEvidencePage() {
   // FILE SELECT
   // =========================================================
 
-  function handleFileSelect(file?: File) {
-    if (!file) return;
+  function handleFileSelect(
+    file?: File
+  ) {
+    if (!file) {
+      return;
+    }
 
-    if (!file.type.startsWith("image/")) {
+    if (
+      !file.type.startsWith("image/")
+    ) {
       setError(
         "Please select an image file."
       );
@@ -341,6 +569,13 @@ export default function FieldEvidencePage() {
 
     setError("");
     setUploadMessage("");
+
+    if (previewUrl) {
+      URL.revokeObjectURL(
+        previewUrl
+      );
+    }
+
     setSelectedFile(file);
 
     const objectUrl =
@@ -373,7 +608,9 @@ export default function FieldEvidencePage() {
     setSelectedFile(null);
 
     if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
+      URL.revokeObjectURL(
+        previewUrl
+      );
     }
 
     setPreviewUrl("");
@@ -405,11 +642,13 @@ export default function FieldEvidencePage() {
           lng: position.coords.longitude,
         });
       },
+
       () => {
         setError(
           "Unable to access GPS location. Evidence can still be uploaded without GPS."
         );
       },
+
       {
         enableHighAccuracy: true,
         timeout: 10000,
@@ -450,9 +689,11 @@ export default function FieldEvidencePage() {
 
         type: selectedFile.type,
 
-        latitude: location?.lat,
+        latitude:
+          location?.lat,
 
-        longitude: location?.lng,
+        longitude:
+          location?.lng,
 
         file: selectedFile,
       });
@@ -469,7 +710,10 @@ export default function FieldEvidencePage() {
         "Evidence uploaded successfully."
       );
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Upload error:",
+        err
+      );
 
       setError(
         err instanceof Error
@@ -485,72 +729,62 @@ export default function FieldEvidencePage() {
   // FILTER
   // =========================================================
 
-  const filteredEvidence = useMemo(() => {
-    return evidenceData.filter((item) => {
-      const status = getStatus(
-        item.review_status
+  const filteredEvidence =
+    useMemo(() => {
+      return evidenceData.filter(
+        (item) => {
+          const status =
+            getStatus(
+              item.review_status
+            );
+
+          const query =
+            searchText
+              .trim()
+              .toLowerCase();
+
+          const matchesSearch =
+            !query ||
+            String(
+              item.evidence_id
+            )
+              .toLowerCase()
+              .includes(query) ||
+            String(
+              item.wbs_code || ""
+            )
+              .toLowerCase()
+              .includes(query) ||
+            String(
+              item.activity_name || ""
+            )
+              .toLowerCase()
+              .includes(query) ||
+            String(
+              item.ai_result || ""
+            )
+              .toLowerCase()
+              .includes(query);
+
+          const matchesStatus =
+            statusFilter === "All" ||
+            status === statusFilter;
+
+          return (
+            matchesSearch &&
+            matchesStatus
+          );
+        }
       );
-
-      const query =
-        searchText.trim().toLowerCase();
-
-      const matchesSearch =
-        !query ||
-        String(item.evidence_id)
-          .toLowerCase()
-          .includes(query) ||
-        String(item.wbs_code || "")
-          .toLowerCase()
-          .includes(query) ||
-        String(item.activity_name || "")
-          .toLowerCase()
-          .includes(query) ||
-        String(item.ai_result || "")
-          .toLowerCase()
-          .includes(query);
-
-      const matchesStatus =
-        statusFilter === "All" ||
-        status === statusFilter;
-
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
-    });
-  }, [
-    evidenceData,
-    searchText,
-    statusFilter,
-  ]);
+    }, [
+      evidenceData,
+      searchText,
+      statusFilter,
+    ]);
 
   // =========================================================
-  // COUNTS
+  // LATEST EVIDENCE
   // =========================================================
-
-  const approvedCount =
-    evidenceData.filter(
-      (item) =>
-        getStatus(
-          item.review_status
-        ) === "Approved"
-    ).length;
-
-  const rejectedCount =
-    evidenceData.filter(
-      (item) =>
-        getStatus(
-          item.review_status
-        ) === "Rejected"
-    ).length;
-
-  const pendingCount =
-    evidenceData.filter(
-      (item) =>
-        getStatus(
-          item.review_status
-        ) === "Pending Review"
-    ).length;
 
   const latestEvidence =
     evidenceData.length > 0
@@ -563,8 +797,7 @@ export default function FieldEvidencePage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen w-full bg-[#F7F4F2] px-8 py-8 xl:px-10">
-
+      <main className="min-h-screen w-full bg-[#F7F4F2] px-4 py-6">
         {/* =====================================================
             HEADER
         ====================================================== */}
@@ -581,7 +814,9 @@ export default function FieldEvidencePage() {
           </div>
 
           <button
-            onClick={() => loadData(true)}
+            onClick={() =>
+              loadData(true)
+            }
             disabled={isRefreshing}
             className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[#68364B] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#592d40] disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -606,7 +841,6 @@ export default function FieldEvidencePage() {
 
         <section className="mb-8 rounded-2xl bg-[#102A2A] p-8 text-white shadow-sm">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#C47A44] px-4 py-1.5 text-xs font-bold uppercase tracking-wide">
                 Active Project
@@ -696,7 +930,6 @@ export default function FieldEvidencePage() {
         ====================================================== */}
 
         <section className="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-
           {/* TOTAL */}
 
           <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm">
@@ -712,7 +945,7 @@ export default function FieldEvidencePage() {
             </div>
 
             <div className="text-4xl font-bold text-[#24302F]">
-              {evidenceData.length}
+              {evidenceStats.total}
             </div>
 
             <p className="mt-2 text-sm text-[#71807D]">
@@ -735,7 +968,7 @@ export default function FieldEvidencePage() {
             </div>
 
             <div className="text-4xl font-bold text-emerald-700">
-              {approvedCount}
+              {evidenceStats.approved}
             </div>
 
             <p className="mt-2 text-sm text-[#71807D]">
@@ -758,7 +991,7 @@ export default function FieldEvidencePage() {
             </div>
 
             <div className="text-4xl font-bold text-amber-700">
-              {pendingCount}
+              {evidenceStats.pending}
             </div>
 
             <p className="mt-2 text-sm text-[#71807D]">
@@ -781,7 +1014,7 @@ export default function FieldEvidencePage() {
             </div>
 
             <div className="text-4xl font-bold text-red-700">
-              {rejectedCount}
+              {evidenceStats.rejected}
             </div>
 
             <p className="mt-2 text-sm text-[#71807D]">
@@ -795,13 +1028,11 @@ export default function FieldEvidencePage() {
         ====================================================== */}
 
         <section className="mb-8 grid grid-cols-1 gap-7 xl:grid-cols-[1.2fr_0.8fr]">
-
           {/* ===================================================
               UPLOAD FIELD EVIDENCE
           ==================================================== */}
 
           <div className="rounded-2xl border border-black/5 bg-white p-7 shadow-sm">
-
             <div className="mb-7">
               <h2 className="text-xl font-bold text-[#24302F]">
                 Upload Field Evidence
@@ -820,7 +1051,9 @@ export default function FieldEvidencePage() {
               </label>
 
               <select
-                value={selectedActivityId}
+                value={
+                  selectedActivityId
+                }
                 onChange={(e) =>
                   setSelectedActivityId(
                     e.target.value
@@ -895,12 +1128,13 @@ export default function FieldEvidencePage() {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={handleFileInput}
+                  onChange={
+                    handleFileInput
+                  }
                 />
               </div>
             ) : (
               <div className="overflow-hidden rounded-2xl border border-black/10">
-
                 <div className="relative aspect-video min-h-[280px] bg-[#102A2A]">
                   <img
                     src={previewUrl}
@@ -909,7 +1143,9 @@ export default function FieldEvidencePage() {
                   />
 
                   <button
-                    onClick={clearSelectedFile}
+                    onClick={
+                      clearSelectedFile
+                    }
                     className="absolute right-4 top-4 rounded-full bg-black/60 p-2.5 text-white transition hover:bg-black/80"
                   >
                     <XCircle size={19} />
@@ -917,7 +1153,6 @@ export default function FieldEvidencePage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-4 p-5">
-
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[#24302F]">
                       {selectedFile.name}
@@ -947,7 +1182,9 @@ export default function FieldEvidencePage() {
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={handleFileInput}
+                    onChange={
+                      handleFileInput
+                    }
                   />
                 </div>
               </div>
@@ -956,11 +1193,8 @@ export default function FieldEvidencePage() {
             {/* GPS */}
 
             <div className="mt-6 rounded-2xl border border-black/5 bg-[#F7F4F2] p-5">
-
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
                 <div className="flex items-start gap-3">
-
                   <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-[#68364B]/10">
                     <MapPin
                       size={19}
@@ -996,7 +1230,9 @@ export default function FieldEvidencePage() {
                           className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#68364B] hover:underline"
                         >
                           <MapPin size={13} />
+
                           Open in Google Maps
+
                           <ExternalLink
                             size={12}
                           />
@@ -1011,7 +1247,9 @@ export default function FieldEvidencePage() {
                 </div>
 
                 <button
-                  onClick={getCurrentLocation}
+                  onClick={
+                    getCurrentLocation
+                  }
                   className="rounded-lg border border-[#68364B]/20 bg-white px-4 py-2.5 text-xs font-semibold text-[#68364B] transition hover:bg-[#68364B]/5"
                 >
                   {location
@@ -1056,9 +1294,7 @@ export default function FieldEvidencePage() {
           ==================================================== */}
 
           <div className="rounded-2xl border border-black/5 bg-white p-7 shadow-sm">
-
             <div className="mb-6 flex items-center justify-between">
-
               <div>
                 <h2 className="text-xl font-bold text-[#24302F]">
                   Latest Evidence
@@ -1090,7 +1326,9 @@ export default function FieldEvidencePage() {
                     />
                   ) : (
                     <div className="flex aspect-video items-center justify-center text-white/50">
-                      <FileImage size={45} />
+                      <FileImage
+                        size={45}
+                      />
                     </div>
                   )}
                 </div>
@@ -1098,9 +1336,7 @@ export default function FieldEvidencePage() {
                 {/* DETAILS */}
 
                 <div className="mt-5">
-
                   <div className="mb-4 flex items-start justify-between gap-4">
-
                     <div>
                       <p className="text-base font-bold text-[#24302F]">
                         Evidence #
@@ -1142,7 +1378,6 @@ export default function FieldEvidencePage() {
                   </div>
 
                   <div className="space-y-3 border-t border-black/5 pt-4 text-sm">
-
                     <div className="flex justify-between gap-4">
                       <span className="text-[#71807D]">
                         AI Result
@@ -1209,7 +1444,9 @@ export default function FieldEvidencePage() {
                             <MapPin
                               size={12}
                             />
+
                             View on Map
+
                             <ExternalLink
                               size={11}
                             />
@@ -1228,13 +1465,13 @@ export default function FieldEvidencePage() {
                     className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-[#68364B]/20 px-4 py-3 text-sm font-semibold text-[#68364B] transition hover:bg-[#68364B]/5"
                   >
                     <Eye size={17} />
+
                     View Details
                   </button>
                 </div>
               </>
             ) : (
               <div className="flex min-h-[430px] flex-col items-center justify-center rounded-2xl bg-[#F7F4F2] text-center">
-
                 <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#68364B]/10">
                   <FileImage
                     size={28}
@@ -1259,11 +1496,8 @@ export default function FieldEvidencePage() {
         ====================================================== */}
 
         <section className="rounded-2xl border border-black/5 bg-white shadow-sm">
-
           <div className="border-b border-black/5 p-7">
-
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-
               <div>
                 <h2 className="text-xl font-bold text-[#24302F]">
                   Evidence Records
@@ -1275,11 +1509,9 @@ export default function FieldEvidencePage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-
                 {/* SEARCH */}
 
                 <div className="relative">
-
                   <Search
                     size={18}
                     className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#71807D]"
@@ -1334,9 +1566,7 @@ export default function FieldEvidencePage() {
 
           {isLoading ? (
             <div className="flex min-h-[300px] items-center justify-center">
-
               <div className="flex items-center gap-3 text-sm text-[#71807D]">
-
                 <RefreshCw
                   size={20}
                   className="animate-spin text-[#68364B]"
@@ -1347,7 +1577,6 @@ export default function FieldEvidencePage() {
             </div>
           ) : filteredEvidence.length === 0 ? (
             <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-
               <FileImage
                 size={42}
                 className="mb-4 text-[#71807D]"
@@ -1363,12 +1592,9 @@ export default function FieldEvidencePage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-
               <table className="w-full min-w-[1100px]">
-
                 <thead>
                   <tr className="border-b border-black/5 bg-[#F7F4F2] text-left text-xs uppercase tracking-wide text-[#71807D]">
-
                     <th className="px-7 py-5">
                       Evidence
                     </th>
@@ -1420,11 +1646,8 @@ export default function FieldEvidencePage() {
                           {/* EVIDENCE */}
 
                           <td className="px-7 py-5">
-
                             <div className="flex items-center gap-4">
-
                               <div className="h-14 w-[72px] overflow-hidden rounded-xl bg-[#102A2A]">
-
                                 {item.uri ? (
                                   <img
                                     src={getImageUrl(
@@ -1466,7 +1689,6 @@ export default function FieldEvidencePage() {
                           {/* ACTIVITY */}
 
                           <td className="px-7 py-5">
-
                             <p className="text-sm font-semibold text-[#24302F]">
                               {
                                 item.wbs_code ||
@@ -1485,7 +1707,6 @@ export default function FieldEvidencePage() {
                           {/* AI */}
 
                           <td className="px-7 py-5">
-
                             <p className="max-w-[220px] truncate text-sm font-medium text-[#24302F]">
                               {
                                 item.ai_result ||
@@ -1507,10 +1728,11 @@ export default function FieldEvidencePage() {
                           {/* GPS */}
 
                           <td className="px-7 py-5">
-
                             {mapsUrl ? (
                               <a
-                                href={mapsUrl}
+                                href={
+                                  mapsUrl
+                                }
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex flex-col gap-1"
@@ -1532,6 +1754,7 @@ export default function FieldEvidencePage() {
 
                                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#68364B] hover:underline">
                                   Open Map
+
                                   <ExternalLink
                                     size={11}
                                   />
@@ -1555,7 +1778,6 @@ export default function FieldEvidencePage() {
                           {/* STATUS */}
 
                           <td className="px-7 py-5">
-
                             <span
                               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${getStatusClasses(
                                 status
@@ -1572,7 +1794,6 @@ export default function FieldEvidencePage() {
                           {/* ACTION */}
 
                           <td className="px-7 py-5 text-right">
-
                             <button
                               onClick={() =>
                                 setSelectedEvidence(
@@ -1581,7 +1802,10 @@ export default function FieldEvidencePage() {
                               }
                               className="inline-flex items-center gap-1.5 rounded-lg border border-[#68364B]/20 px-4 py-2.5 text-xs font-semibold text-[#68364B] transition hover:bg-[#68364B]/5"
                             >
-                              <Eye size={15} />
+                              <Eye
+                                size={15}
+                              />
+
                               View
                             </button>
                           </td>
@@ -1612,11 +1836,9 @@ export default function FieldEvidencePage() {
                 e.stopPropagation()
               }
             >
-
               {/* MODAL HEADER */}
 
               <div className="flex items-center justify-between border-b border-black/5 p-6">
-
                 <div>
                   <h3 className="text-xl font-bold text-[#24302F]">
                     Evidence #
@@ -1641,16 +1863,16 @@ export default function FieldEvidencePage() {
                   }
                   className="rounded-full p-2 text-[#71807D] transition hover:bg-[#F7F4F2]"
                 >
-                  <XCircle size={22} />
+                  <XCircle
+                    size={22}
+                  />
                 </button>
               </div>
 
               <div className="grid grid-cols-1 gap-7 p-6 lg:grid-cols-2">
-
                 {/* IMAGE */}
 
                 <div className="overflow-hidden rounded-2xl bg-[#102A2A]">
-
                   {selectedEvidence.uri ? (
                     <img
                       src={getImageUrl(
@@ -1661,7 +1883,9 @@ export default function FieldEvidencePage() {
                     />
                   ) : (
                     <div className="flex min-h-[350px] items-center justify-center text-white/50">
-                      <FileImage size={48} />
+                      <FileImage
+                        size={48}
+                      />
                     </div>
                   )}
                 </div>
@@ -1669,7 +1893,6 @@ export default function FieldEvidencePage() {
                 {/* DETAILS */}
 
                 <div className="space-y-5">
-
                   {/* REVIEW STATUS */}
 
                   <div>
@@ -1699,7 +1922,6 @@ export default function FieldEvidencePage() {
                   {/* ACTIVITY */}
 
                   <div className="rounded-2xl bg-[#F7F4F2] p-5">
-
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#71807D]">
                       Activity
                     </p>
@@ -1722,9 +1944,7 @@ export default function FieldEvidencePage() {
                   {/* AI */}
 
                   <div className="grid grid-cols-2 gap-4">
-
                     <div className="rounded-2xl border border-black/5 p-5">
-
                       <p className="text-xs text-[#71807D]">
                         AI Result
                       </p>
@@ -1738,7 +1958,6 @@ export default function FieldEvidencePage() {
                     </div>
 
                     <div className="rounded-2xl border border-black/5 p-5">
-
                       <p className="text-xs text-[#71807D]">
                         Confidence
                       </p>
@@ -1757,7 +1976,6 @@ export default function FieldEvidencePage() {
                   {/* META */}
 
                   <div className="space-y-4 rounded-2xl border border-black/5 p-5">
-
                     <div className="flex justify-between gap-4">
                       <span className="text-sm text-[#71807D]">
                         Submitted
@@ -1773,13 +1991,11 @@ export default function FieldEvidencePage() {
                     {/* GPS */}
 
                     <div className="flex items-start justify-between gap-4">
-
                       <span className="text-sm text-[#71807D]">
                         GPS
                       </span>
 
                       <div className="text-right">
-
                         <span className="block text-sm font-medium text-[#24302F]">
                           {getLocation(
                             selectedEvidence
@@ -1797,8 +2013,12 @@ export default function FieldEvidencePage() {
                             rel="noreferrer"
                             className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#68364B]/20 px-3 py-2 text-xs font-semibold text-[#68364B] transition hover:bg-[#68364B]/5"
                           >
-                            <MapPin size={13} />
+                            <MapPin
+                              size={13}
+                            />
+
                             Open in Google Maps
+
                             <ExternalLink
                               size={12}
                             />
@@ -1808,7 +2028,6 @@ export default function FieldEvidencePage() {
                     </div>
 
                     <div className="flex justify-between gap-4">
-
                       <span className="text-sm text-[#71807D]">
                         Reviewed By
                       </span>
@@ -1822,7 +2041,6 @@ export default function FieldEvidencePage() {
                     </div>
 
                     <div className="flex justify-between gap-4">
-
                       <span className="text-sm text-[#71807D]">
                         Reviewed At
                       </span>
@@ -1839,7 +2057,6 @@ export default function FieldEvidencePage() {
 
                   {selectedEvidence.review_reason && (
                     <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
-
                       <p className="text-xs font-semibold uppercase tracking-wide text-red-600">
                         Review Reason
                       </p>

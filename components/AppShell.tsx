@@ -25,13 +25,13 @@ export default function AppShell({
         setCollapsed={setCollapsed}
       />
 
-      <main
+      <div
         className={`min-h-screen pt-16 transition-all duration-300 lg:pt-0 ${
           collapsed ? "lg:ml-[78px]" : "lg:ml-[255px]"
         }`}
       >
         {children}
-      </main>
+      </div>
     </div>
   );
 }

@@ -199,6 +199,12 @@ export default function DashboardPage() {
        */
       const dashboardData = await getDashboard(PROJECT_ID);
 
+      console.log("🔥 DASHBOARD API RESPONSE:", dashboardData);
+      console.log("🔥 Evidence Count:", dashboardData?.evidence_count);
+      console.log("🔥 Approved:", dashboardData?.approved_evidence);
+      console.log("🔥 Pending:", dashboardData?.pending_evidence);
+      console.log("🔥 Rejected:", dashboardData?.rejected_evidence);
+
       setDashboard(dashboardData);
 
       /*
@@ -277,20 +283,20 @@ export default function DashboardPage() {
    */
   const delayedCount = Number(
     dashboard?.total_delayed ??
-      backendAlerts.filter(
-        (alert: any) =>
-          String(alert?.status || "").toLowerCase() ===
-          "delayed"
-      ).length
+    backendAlerts.filter(
+      (alert: any) =>
+        String(alert?.status || "").toLowerCase() ===
+        "delayed"
+    ).length
   );
 
   const atRiskCount = Number(
     dashboard?.total_at_risk ??
-      backendAlerts.filter(
-        (alert: any) =>
-          String(alert?.status || "").toLowerCase() ===
-          "at risk"
-      ).length
+    backendAlerts.filter(
+      (alert: any) =>
+        String(alert?.status || "").toLowerCase() ===
+        "at risk"
+    ).length
   );
 
   /* =======================================================
@@ -299,8 +305,8 @@ export default function DashboardPage() {
 
   const totalActivities = Number(
     dashboard?.total_activities ??
-      dashboard?.activities?.length ??
-      0
+    dashboard?.activities?.length ??
+    0
   );
 
   const completedActivities = Number(
@@ -309,10 +315,10 @@ export default function DashboardPage() {
 
   const pendingActivities = Number(
     dashboard?.pending_activities ??
-      Math.max(
-        0,
-        totalActivities - completedActivities
-      )
+    Math.max(
+      0,
+      totalActivities - completedActivities
+    )
   );
 
   /* =======================================================
@@ -345,27 +351,27 @@ export default function DashboardPage() {
 
   const approvedEvidence = Number(
     dashboard?.approved_evidence ??
-      evidence.filter(
-        (item) =>
-          item.review_status === "Approved"
-      ).length
+    evidence.filter(
+      (item) =>
+        item.review_status === "Approved"
+    ).length
   );
 
   const rejectedEvidence = Number(
     dashboard?.rejected_evidence ??
-      evidence.filter(
-        (item) =>
-          item.review_status === "Rejected"
-      ).length
+    evidence.filter(
+      (item) =>
+        item.review_status === "Rejected"
+    ).length
   );
 
   const pendingEvidence = Number(
     dashboard?.pending_evidence ??
-      evidence.filter(
-        (item) =>
-          !item.review_status ||
-          item.review_status === "Pending Review"
-      ).length
+    evidence.filter(
+      (item) =>
+        !item.review_status ||
+        item.review_status === "Pending Review"
+    ).length
   );
 
   /* =======================================================
@@ -377,10 +383,10 @@ export default function DashboardPage() {
       evidence.length > 0
         ? evidence
         : Array.isArray(
-            dashboard?.recent_evidence
-          )
-        ? dashboard.recent_evidence
-        : [];
+          dashboard?.recent_evidence
+        )
+          ? dashboard.recent_evidence
+          : [];
 
     return [...source]
       .sort((a, b) => {
@@ -571,17 +577,16 @@ export default function DashboardPage() {
               <div className="min-w-0">
 
                 <span
-                  className={`inline-block rounded-full px-2.5 py-1.5 text-[8px] font-bold sm:px-3 sm:text-[9px] ${
-                    progress < 50
+                  className={`inline-block rounded-full px-2.5 py-1.5 text-[8px] font-bold sm:px-3 sm:text-[9px] ${progress < 50
                       ? "bg-[#7b4c35] text-[#ffe5d1]"
                       : "bg-[#315b4f] text-[#dff5eb]"
-                  }`}
+                    }`}
                 >
                   {progress < 50
                     ? "AT RISK"
                     : delayedCount > 0
-                    ? "ATTENTION"
-                    : "ON TRACK"}
+                      ? "ATTENTION"
+                      : "ON TRACK"}
                 </span>
 
                 <p className="mt-2 text-[8px] text-[#8fa19d] sm:text-[9px]">
@@ -589,8 +594,8 @@ export default function DashboardPage() {
                   {progress < 50
                     ? "Schedule requires attention"
                     : delayedCount > 0
-                    ? `${delayedCount} delayed activities`
-                    : "Project progressing normally"}
+                      ? `${delayedCount} delayed activities`
+                      : "Project progressing normally"}
 
                 </p>
 
@@ -653,12 +658,12 @@ export default function DashboardPage() {
               delayedCount > 0
                 ? `${delayedCount} delayed`
                 : atRiskCount > 0
-                ? `${atRiskCount} at risk`
-                : "No active delays"
+                  ? `${atRiskCount} at risk`
+                  : "No active delays"
             }
             noteClass={
               delayedCount > 0 ||
-              atRiskCount > 0
+                atRiskCount > 0
                 ? "text-[#a34c4c]"
                 : "text-[#4c7565]"
             }
@@ -906,20 +911,19 @@ export default function DashboardPage() {
                   </p>
 
                   <p
-                    className={`mt-1 text-[9px] font-bold uppercase tracking-wider ${
-                      progress < 50 ||
-                      delayedCount > 0 ||
-                      atRiskCount > 0
+                    className={`mt-1 text-[9px] font-bold uppercase tracking-wider ${progress < 50 ||
+                        delayedCount > 0 ||
+                        atRiskCount > 0
                         ? "text-[#a85f2e]"
                         : "text-[#4c7565]"
-                    }`}
+                      }`}
                   >
                     {progress < 50
                       ? "At Risk"
                       : delayedCount > 0 ||
                         atRiskCount > 0
-                      ? "Attention"
-                      : "On Track"}
+                        ? "Attention"
+                        : "On Track"}
                   </p>
 
                 </div>
@@ -937,8 +941,8 @@ export default function DashboardPage() {
                     ? "At Risk"
                     : delayedCount > 0 ||
                       atRiskCount > 0
-                    ? "Attention"
-                    : "On Track"
+                      ? "Attention"
+                      : "On Track"
                 }
                 danger={
                   progress < 50 ||
@@ -1124,17 +1128,16 @@ export default function DashboardPage() {
                       </div>
 
                       <span
-                        className={`shrink-0 rounded-full px-2 py-1 text-[7px] font-bold ${
-                          status === "Approved"
+                        className={`shrink-0 rounded-full px-2 py-1 text-[7px] font-bold ${status === "Approved"
                             ? "bg-[#e9f3ee] text-[#4c7565]"
                             : status === "Rejected"
-                            ? "bg-[#f9eaea] text-[#a34c4c]"
-                            : "bg-[#fff1e5] text-[#a85f2e]"
-                        }`}
+                              ? "bg-[#f9eaea] text-[#a34c4c]"
+                              : "bg-[#fff1e5] text-[#a85f2e]"
+                          }`}
                       >
 
                         {status ===
-                        "Pending Review"
+                          "Pending Review"
                           ? "PENDING"
                           : status.toUpperCase()}
 
@@ -1433,11 +1436,10 @@ function HealthRow({
       <div className="flex items-center gap-2">
 
         <span
-          className={`h-1.5 w-1.5 rounded-full ${
-            danger
+          className={`h-1.5 w-1.5 rounded-full ${danger
               ? "bg-[#c47a44]"
               : "bg-[#4c7565]"
-          }`}
+            }`}
         />
 
         <span className="text-[10px] text-[#687572]">
@@ -1447,11 +1449,10 @@ function HealthRow({
       </div>
 
       <span
-        className={`text-[9px] font-bold ${
-          danger
+        className={`text-[9px] font-bold ${danger
             ? "text-[#a85f2e]"
             : "text-[#4c7565]"
-        }`}
+          }`}
       >
         {value}
       </span>
